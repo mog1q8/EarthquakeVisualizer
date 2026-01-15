@@ -7,6 +7,10 @@
 [Ll]ogs/
 [Mm]emoryCaptures/
 
+# Exception: Allow WebGLBuild/Build/ directory
+!/WebGLBuild/Build/
+!/docs/Build/
+
 # Asset meta data should only be ignored when the corresponding asset is also ignored
 !/[Aa]ssets/**/*.meta
 
@@ -28,3 +32,5 @@
 
 # OS files
 .DS_Store
+
+#test
