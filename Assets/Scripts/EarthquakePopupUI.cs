@@ -1,10 +1,8 @@
-using System;
 using UnityEngine;
 using TMPro;
 
 /// <summary>
-/// 地震情報ポップアップUI
-/// クリックされた地震のみ表示される
+/// 地震情報ポップアップUI（左下固定）
 /// </summary>
 public class EarthquakePopupUI : MonoBehaviour
 {
@@ -14,24 +12,23 @@ public class EarthquakePopupUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI bodyText;
 
     [Header("Settings")]
-    [SerializeField] private Vector2 screenOffset = new Vector2(20, -20);
-
-    private Camera _mainCamera;
+    [SerializeField] private Vector2 margin = new Vector2(20, 20); // 左下余白
 
     void Awake()
     {
-        _mainCamera = Camera.main;
         Hide();
     }
 
     public void Show(EarthquakeEvent ev, Vector3 worldPosition)
     {
-        if (root == null || _mainCamera == null) return;
+        if (root == null) return;
 
-        Vector3 screenPos =
-            _mainCamera.WorldToScreenPoint(worldPosition);
+        // ★ 左下固定位置
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.zero;
+        root.pivot = Vector2.zero;
 
-        root.position = screenPos + (Vector3)screenOffset;
+        root.anchoredPosition = margin;
         root.gameObject.SetActive(true);
 
         titleText.text = ev.place;

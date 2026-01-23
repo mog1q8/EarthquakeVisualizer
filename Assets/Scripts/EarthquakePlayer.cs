@@ -25,13 +25,12 @@ public class EarthquakePlayer : MonoBehaviour
     [Range(1, 12)] public int jumpMonth = 1;
     public int jumpDay = 1;
 
-    [Tooltip("チェックすると指定日付へジャンプ")]
     public bool jumpNow = false;
 
     void OnValidate()
     {
-        int days = DateTime.DaysInMonth(jumpYear, jumpMonth);
-        jumpDay = Mathf.Clamp(jumpDay, 1, days);
+        jumpDay = Mathf.Clamp(jumpDay, 1,
+            DateTime.DaysInMonth(jumpYear, jumpMonth));
     }
 
     [Header("Globe")]
@@ -58,6 +57,14 @@ public class EarthquakePlayer : MonoBehaviour
     private int _currentIndex;
     private bool _isPlaying;
 
+    public bool IsPlaying => _isPlaying;
+
+    // ===== UIからTimeScale変更 =====
+    public void SetTimeScale(float daysPerSecond)
+    {
+        timeScale = daysPerSecond * 60 * 60 * 24;
+    }
+
     void Start()
     {
         if (csvFile == null) return;
@@ -78,7 +85,6 @@ public class EarthquakePlayer : MonoBehaviour
     {
         if (!_isPlaying) return;
 
-        // ★ Inspectorジャンプ検知
         if (jumpNow)
         {
             JumpToDate();
@@ -88,8 +94,9 @@ public class EarthquakePlayer : MonoBehaviour
 
         _currentSimTime = _currentSimTime.AddSeconds(timeScale * Time.deltaTime);
         if (_currentSimTime > MaxSelectableDate)
+        {
             _currentSimTime = MaxSelectableDate;
-
+        }
         dateTextUI?.SetDate(_currentSimTime);
 
         while (_currentIndex < _events.Count &&
@@ -99,30 +106,6 @@ public class EarthquakePlayer : MonoBehaviour
             _currentIndex++;
         }
     }
-
-    // ===== 日付ジャンプ本体 =====
-    public void JumpToDate()
-    {
-        DateTime target = GetClampedJumpDate();
-
-        foreach (var m in _activeMarkers)
-           if (m != null) Destroy(m);
-
-        _activeMarkers.Clear();
-
-       _currentSimTime = target;
-
-       _currentIndex = 0;
-       while (_currentIndex < _events.Count &&
-              _events[_currentIndex].timeUtc < _currentSimTime)
-       {
-           _currentIndex++;
-       }
-
-       dateTextUI?.SetDate(_currentSimTime);
-       Debug.Log($"Jumped to {_currentSimTime:yyyy-MM-dd}");
-    }
-
     // ===== UI用：外部から呼ぶ =====
     public void JumpToDateFromUI(int year, int month, int day)
     {
@@ -132,75 +115,76 @@ public class EarthquakePlayer : MonoBehaviour
 
         JumpToDate();
     }
+
+    // ===== 再生制御 =====
+    public void Play() => _isPlaying = true;
+    public void Pause() => _isPlaying = false;
+
+    public void Stop()
+    {
+        _isPlaying = false;
+
+        foreach (var m in _activeMarkers)
+            if (m != null) Destroy(m);
+        _activeMarkers.Clear();
+
+        _currentSimTime = MinSelectableDate;
+        _currentIndex = 0;
+        dateTextUI?.SetDate(_currentSimTime);
+    }
+
+    // ===== 日付ジャンプ =====
+    public void JumpToDate()
+    {
+        foreach (var m in _activeMarkers)
+            if (m != null) Destroy(m);
+        _activeMarkers.Clear();
+
+        _currentSimTime = GetClampedJumpDate();
+        _currentIndex = 0;
+
+        while (_currentIndex < _events.Count &&
+               _events[_currentIndex].timeUtc < _currentSimTime)
+            _currentIndex++;
+
+        dateTextUI?.SetDate(_currentSimTime);
+    }
+
     private DateTime GetClampedJumpDate()
     {
-        int day = Mathf.Clamp(
-            jumpDay,
-            1,
-            DateTime.DaysInMonth(jumpYear, jumpMonth)
-        );
-
         DateTime dt = new DateTime(
-            jumpYear, jumpMonth, day,
-            0, 0, 0, DateTimeKind.Utc
-        );
+            jumpYear, jumpMonth, jumpDay,
+            0, 0, 0, DateTimeKind.Utc);
 
         if (dt < MinSelectableDate) dt = MinSelectableDate;
         if (dt > MaxSelectableDate) dt = MaxSelectableDate;
 
         return dt;
     }
-    // ===== 再生制御（UI用）=====
 
-    // 再生
-    public void Play()
-    {
-       _isPlaying = true;
-    }
-
-    // 一時停止
-    public void Pause()
-    {
-        _isPlaying = false;
-    }
-
-    // 停止（先頭に戻す）
-    public void Stop()
-    {
-       _isPlaying = false;
-
-       // マーカー削除
-        foreach (var m in _activeMarkers)
-            if (m != null) Destroy(m);
-        _activeMarkers.Clear();
-
-     // 時刻を初期位置へ
-        _currentSimTime = MinSelectableDate;
-        _currentIndex = 0;
-
-        dateTextUI?.SetDate(_currentSimTime);
-    }
-
-    // ===== 以降は既存処理（変更なし） =====
-
+    // ===== マーカー生成（★最重要修正点）=====
     private void SpawnMarker(EarthquakeEvent ev)
     {
-        var go = Instantiate(markerPrefab, ev.worldPos, Quaternion.identity, globe);
+        var go = Instantiate(markerPrefab, globe);
+        go.transform.localPosition = ev.worldPos; // ← ローカル座標
+        go.transform.localRotation = Quaternion.identity;
 
         float t = Mathf.InverseLerp(2f, 9f, ev.magnitude);
         float scale = Mathf.Lerp(magScaleRange.x, magScaleRange.y, t);
         go.transform.localScale = Vector3.one * markerBaseScale * scale;
 
-        go.GetComponent<EarthquakeMarker>()?.SetData(ev, popupUI);
+        go.GetComponent<EarthquakeMarker>()
+            ?.SetData(ev, popupUI, this);
 
         _activeMarkers.Enqueue(go);
         Destroy(go, 5f);
     }
 
+    // ===== CSV読み込み =====
     private void LoadCsv(string csv)
     {
-        var lines = csv.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-        if (lines.Length <= 1) return;
+        var lines = csv.Split(new[] { '\n', '\r' },
+            StringSplitOptions.RemoveEmptyEntries);
 
         var header = SplitCsvLine(lines[0]);
 
@@ -214,10 +198,12 @@ public class EarthquakePlayer : MonoBehaviour
         for (int i = 1; i < lines.Length; i++)
         {
             var cols = SplitCsvLine(lines[i]);
-            if (!DateTimeOffset.TryParse(cols[idxTime], CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal, out var dto)) continue;
+            if (!DateTimeOffset.TryParse(cols[idxTime],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal,
+                out var dto)) continue;
 
-            var ev = new EarthquakeEvent
+            _events.Add(new EarthquakeEvent
             {
                 timeUtc = dto.UtcDateTime,
                 latitude = double.Parse(cols[idxLat]),
@@ -225,26 +211,25 @@ public class EarthquakePlayer : MonoBehaviour
                 depthKm = float.Parse(cols[idxDepth]),
                 magnitude = float.Parse(cols[idxMag]),
                 place = cols[idxPlace],
-                worldPos = LatLonToWorld(
+                worldPos = LatLonToLocal(
                     double.Parse(cols[idxLat]),
                     double.Parse(cols[idxLon]),
                     globeRadius)
-            };
-
-            _events.Add(ev);
+            });
         }
     }
 
-    private Vector3 LatLonToWorld(double latDeg, double lonDeg, float radius)
+    // ===== 緯度経度 → ローカル座標 =====
+    private Vector3 LatLonToLocal(double latDeg, double lonDeg, float radius)
     {
         double lat = latDeg * Mathf.Deg2Rad;
         double lon = lonDeg * Mathf.Deg2Rad;
 
-        return globe.TransformPoint(new Vector3(
+        return new Vector3(
             (float)(radius * Math.Cos(lat) * Math.Cos(lon)),
             (float)(radius * Math.Sin(lat)),
             (float)(radius * Math.Cos(lat) * Math.Sin(lon))
-        ));
+        );
     }
 
     private static string[] SplitCsvLine(string line)
@@ -255,7 +240,7 @@ public class EarthquakePlayer : MonoBehaviour
 
         foreach (char c in line)
         {
-            if (c == '\"') inQuotes = !inQuotes;
+            if (c == '"') inQuotes = !inQuotes;
             else if (c == ',' && !inQuotes)
             {
                 list.Add(sb.ToString());
