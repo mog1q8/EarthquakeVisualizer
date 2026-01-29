@@ -29,3 +29,7 @@ UserSettings/
 
 # OS files
 .DS_Store
+
+# --- GitHub Pages (Unity WebGL) ---
+!docs/Build/
+!docs/Build/**
